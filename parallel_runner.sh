@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --gres=gpu:1       # Request GPU "generic resources"
-#SBATCH --cpus-per-task=2  # Cores proportional to GPUs: 6 on Cedar, 16 on Graham.
-#SBATCH --mem=3200M       # Memory proportional to GPUs: 32000 Cedar, 64000 Graham.
-#SBATCH --time=0-24:00
+#SBATCH --cpus-per-task=6  # Cores proportional to GPUs: 6 on Cedar, 16 on Graham.
+#SBATCH --mem=16000M       # Memory proportional to GPUs: 32000 Cedar, 64000 Graham.
+#SBATCH --time=0-36:00
 #SBATCH --output=%N-%j.out
 
 
@@ -20,20 +20,22 @@ conda-unpack
 
 # list of collaborators for each subjob
 
-collaborators_list=(
-    "01020304"
-    "05060708"
-    "09101112"
-    "1314151617"
-)
+collaborators_list="0102030405060708091011121314151617"
+
 
 # path is where we save the models both collaborator and aggregate  
 
 path=/home/lakshayt/scratch/FETS/Plain/parallel_models/test_run/
 
+mkdir $SLURM_TMPDIR/Data
+tar xf /home/lakshayt/scratch/FETS/Data/FETS.tar -C $SLURM_TMPDIR/Data
+
 # Loop through the number of rounds
 
-for cy in {1..2}
+lockdir=/home/lakshayt/scratch/FETS/Plain/scripts/data.lock
+rm -r lockdir
+
+for cy in {1..20}
 do
     # Turns the iterator (integer?) into a padded string with 4 characters
     # This matches the naming convention followed in the rest of the script
@@ -46,23 +48,16 @@ do
     sleep 10
 
     # Schedule each subjob for running and pass it the collaborators it needs to train as well as other other stuff like path to data
-    for run in {1..4}
-    do
-        if (( $run == 4 ))
-        then
-            sbatch --wait --export=round_num=$cy,save_path=$path,collaborators=${collaborators_list[$run-1]} /home/lakshayt/scratch/FETS/Plain/scripts/parallel_subrunner.sh
-        else
-            sbatch --export=round_num=$cy,save_path=$path,collaborators=${collaborators_list[$run-1]} /home/lakshayt/scratch/FETS/Plain/scripts/parallel_subrunner.sh
-        fi
-        # Sleep put in for giving gap between job scheduling
-        sleep 180
-    done
+
+    sbatch --wait --export=round_num=$cy,save_path=$path /home/lakshayt/scratch/FETS/Plain/scripts/parallel_subrunner.sh
 
     sleep 120
     
+    AGG_TIME=$(date +"%T")
+    echo "Training for round $CYCLE_ID finished at : $AGG_TIME"
     # aggregation code which aggregates and validates
 
-    python aggregation.py $cy $path $collaborators_list
+    python ~/scratch/FETS/Plain/aggregation.py $cy $SLURM_TMPDIR/Data/ $path $collaborators_list
     
     # Record the cycle end time
     END_TIME=$(date +"%T")
